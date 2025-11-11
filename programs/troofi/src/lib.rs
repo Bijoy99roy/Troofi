@@ -13,7 +13,7 @@ pub mod troofi {
     use super::*;
 
     pub fn initialize_listing(ctx: Context<InitalizeListing>, price: u64) -> Result<()> {
-        ctx.accounts.inialize(price, ctx.bumps.listing_pda)?;
+        ctx.accounts.initialize(price, ctx.bumps.listing_pda)?;
         Ok(())
     }
 }
