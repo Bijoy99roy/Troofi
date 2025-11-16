@@ -1,7 +1,7 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{prelude::*, system_program};
 use mpl_core::instructions::TransferV1CpiBuilder;
 
-use crate::Listing;
+use crate::{Listing, User};
 
 #[derive(Accounts)]
 pub struct InitalizeListing<'info> {
@@ -19,6 +19,27 @@ pub struct InitalizeListing<'info> {
         bump
     )]
     pub listing_pda: Account<'info, Listing>,
+
+    #[account(
+        init_if_needed,
+        payer = seller,
+        space = 8 + User::INIT_SPACE,
+        seeds = [b"user", seller.key().as_ref()],
+        bump
+    )]
+    pub user_pda: Account<'info, User>,
+
+    /// CHECK: This PDA is derived inside the program and does not need additional checks
+    #[account(
+        init_if_needed,
+        payer = seller,
+        seeds = [b"vault", seller.key().as_ref()],
+        bump,
+        owner = system_program::ID,  
+        space = 0                     
+    )]
+    pub vault_pda: AccountInfo<'info>,
+
     /// CHECK: mpl-core program
     pub mpl_core_program: AccountInfo<'info>,
 
@@ -26,13 +47,19 @@ pub struct InitalizeListing<'info> {
 }
 
 impl<'info> InitalizeListing<'info> {
-    pub fn initialize(&mut self, price: u64, bump: u8) -> Result<()> {
+    pub fn initialize(&mut self, price: u64, listing_bump: u8, user_bump:u8, vault_bump:u8) -> Result<()> {
         let listing = &mut self.listing_pda;
+
+        let user = &mut self.user_pda;
 
         listing.seller = self.seller.key();
         listing.asset = self.asset.key();
         listing.price = price;
-        listing.bump = bump;
+        listing.bump = listing_bump;
+
+        user.bump = user_bump;
+        user.user = self.seller.key();
+        user.vault_bump = vault_bump;
 
         // CPI to mpl core to transfer the asset to listing pda
         TransferV1CpiBuilder::new(&self.mpl_core_program.to_account_info())
