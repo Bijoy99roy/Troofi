@@ -21,7 +21,7 @@ pub struct BuyListing<'info> {
     #[account(
         mut,
         seeds = [b"user", listing_pda.seller.key().as_ref()],
-        bump
+        bump=user_pda.bump
     )]
     pub user_pda: Account<'info, User>,
 
@@ -29,7 +29,7 @@ pub struct BuyListing<'info> {
     #[account(
         mut,
         seeds = [b"vault", listing_pda.seller.key().as_ref()],
-        bump,
+        bump=user_pda.vault_bump,
         owner = system_program::ID,                   
     )]
     pub vault_pda: AccountInfo<'info>,

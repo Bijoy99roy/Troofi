@@ -1,5 +1,5 @@
 use anchor_lang::{prelude::*, system_program};
-use mpl_core::instructions::TransferV1CpiBuilder;
+use mpl_core::{instructions::{TransferV1Cpi, TransferV1CpiAccounts, TransferV1CpiBuilder, TransferV1InstructionArgs}, types::CompressionProof};
 
 use crate::{Listing, User};
 
@@ -64,10 +64,31 @@ impl<'info> InitalizeListing<'info> {
         // CPI to mpl core to transfer the asset to listing pda
         TransferV1CpiBuilder::new(&self.mpl_core_program.to_account_info())
             .asset(&self.asset.to_account_info())
+            .collection(None)
             .authority(Some(&self.seller.to_account_info()))
             .new_owner(&self.listing_pda.to_account_info())
+            .payer(&self.seller.to_account_info())
+            .log_wrapper(None)
             .system_program(Some(&self.system_program.to_account_info()))
             .invoke()?;
+
+//         let sys_ai = self.system_program.to_account_info();
+//         let seller_ai = self.seller.to_account_info();
+//         let accounts = TransferV1CpiAccounts {
+//             asset:        &self.asset.to_account_info(),
+//             collection:   None,
+//             payer:        &self.seller.to_account_info(),
+//             authority:    Some(&seller_ai),
+//             new_owner:    &self.listing_pda.to_account_info(),
+//             system_program: Some(&sys_ai),
+//             log_wrapper:  None,
+//         };
+
+//         let proof = TransferV1InstructionArgs {
+//     compression_proof: None,
+// };
+//         TransferV1Cpi::new(&self.mpl_core_program.to_account_info(), accounts, proof)
+//         .invoke()?;
 
         Ok(())
     }

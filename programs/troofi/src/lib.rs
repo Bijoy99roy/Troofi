@@ -25,4 +25,9 @@ pub mod troofi {
         ctx.accounts.buy()?;
         Ok(())
     }
+
+    pub fn cancel_listing(ctx: Context<CancelListing>) -> Result<()> {
+        ctx.accounts.cancel()?;
+        Ok(())
+    }
 }
