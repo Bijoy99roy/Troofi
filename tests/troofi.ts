@@ -8,6 +8,7 @@ import { create, mplCore } from '@metaplex-foundation/mpl-core'
 import fs from 'fs'
 import { generateSigner, publicKey } from "@metaplex-foundation/umi";
 import { dasApi } from "@metaplex-foundation/digital-asset-standard-api";
+import { assert } from "chai";
 describe("troofi", () => {
   // Configure the client to use the local cluster.
   anchor.setProvider(anchor.AnchorProvider.env());
@@ -17,9 +18,12 @@ describe("troofi", () => {
   const provider = anchor.getProvider();
 
   const wallet = anchor.web3.Keypair.generate()
-  const umi = createUmi('http://127.0.0.1:8899/')
+  const nftBucket = {}
+  const umi = createUmi("http://0.0.0.0:8899", "confirmed")
       .use(mplCore())
       .use(dasApi())
+
+    // const umi2 = createUmi('http://127.0.0.1:8899/')
   function loadKeypairFromFile(secretFilePath: string){
     const secret = JSON.parse(fs.readFileSync(secretFilePath, "utf-8"));
     const secretKey = Uint8Array.from(secret)
@@ -41,21 +45,62 @@ function loadKeypairFromFileST(secretFilePath: string){
     return {pda, bump}
   }
 
-  it("Is initialized!", async () => {
-    // Add your test here.
-    
-    const {nftSigner, assetPda} = await mintNftLocal(umi, selletKeypair)
-    // const asseta = await fetchAsset(umi, nftSigner.publicKey);
-    const  asset =  new anchor.web3.PublicKey(nftSigner.publicKey)
+  async function prepareNFT(asset, id){
+    if (id in nftBucket){
+
+      return nftBucket[id]
+      }
     const {pda: listingPda} =  await getPda([Buffer.from("listing"), sellet.publicKey.toBuffer(), asset.toBuffer()])
     
     const {pda: userPda} = await getPda([Buffer.from("user"), sellet.publicKey.toBuffer()])
 
     const {pda: vaultPda} = await getPda([Buffer.from("vault"), sellet.publicKey.toBuffer()])
 
+    
+    nftBucket[id] = {
+      asset,
+      listingPda,
+      userPda,
+      vaultPda
+    }
+
+    return nftBucket[id]
+
+  }
+
+  async function getAirdrop(
+    publicKey: anchor.web3.PublicKey,
+    amount: number = 100 * anchor.web3.LAMPORTS_PER_SOL
+  ){
+    const airdropTxn = await provider.connection.requestAirdrop(
+      publicKey,
+      amount
+    );
+
+    await provider.connection.confirmTransaction(airdropTxn);
+  }
+
+  before(async ()=>{
+    await getAirdrop(wallet.publicKey);    
+  })
+
+  it("Initalize Listing", async () => {
+    // Add your test here.
+  
+    const nftSigner = await mintNftLocal(umi, selletKeypair)
+    // const asseta = await fetchAsset(umi, nftSigner.publicKey);
+    const  asset =  new anchor.web3.PublicKey(nftSigner.publicKey)
+    const {
+      _,
+      listingPda,
+      userPda,
+      vaultPda
+    } = await prepareNFT(asset, 1)
+
     const price = new anchor.BN(1*anchor.web3.LAMPORTS_PER_SOL);
-    const assetAccounta = await fetchAsset(umi, publicKey(asset.toString()));
-    console.log("Asset owner:", assetAccounta.owner.toString());
+    // const assetAccounta = await fetchAsset(umi, publicKey(asset.toString()));
+    // console.log("Asset owner:", assetAccounta.owner.toString());
+   
     const txn = await program.methods.initializeListing(price).accountsPartial({
       seller: sellet.publicKey,
       asset: asset,
@@ -66,20 +111,152 @@ function loadKeypairFromFileST(secretFilePath: string){
     })
     .signers([sellet])
     .rpc()
-    console.log(`Signature: ${txn}`)
+
     const balance = await provider.connection.getBalance(vaultPda);
   // Convert lamports to SOL
   const solBalance = balance / anchor.web3.LAMPORTS_PER_SOL;
-  console.log(`${vaultPda} has ${solBalance} SOL`) 
 
-  const assetsByOwner = await fetchAssetsByOwner(umi, listingPda.toString(), {
-  skipDerivePlugins: false,
-})
 
-console.log(assetsByOwner)
+//   const assetsByOwner = await fetchAssetsByOwner(umi, listingPda.toString(), {
+//   skipDerivePlugins: false,
+// })
 
-const assetAccount = await fetchAsset(umi, publicKey(asset.toString()));
-console.log("Asset owner after transfer:", assetAccount.owner.toString());
+// console.log(assetsByOwner)
+
+
+
+const assetAccount = await fetchAsset(umi, publicKey(nftSigner.publicKey.toString()));
+
+
+assert.equal(listingPda.toString(), assetAccount.owner.toString())
+    
+  });
+
+  it("Buy listing", async()=>{
+    const {
+      asset,
+      listingPda,
+      userPda,
+      vaultPda
+    } = await prepareNFT(null, 1)
+
+
+    await program.methods.buyListing()
+    .accountsPartial({
+      buyer: wallet.publicKey,
+      asset,
+      listingPda,
+      userPda,
+      vaultPda,
+      mplCoreProgram: MPL_CORE_PROGRAM_ID
+
+    }).signers([wallet])
+    .rpc()
+
+
+    const assetAccount = await fetchAsset(umi, publicKey(asset.toString()));
+    // console.log("Asset:", assetAccount);
+ 
+    const sellerVaultBalance = await provider.connection.getBalance(vaultPda);
+
+    const balanceInSol = sellerVaultBalance / anchor.web3.LAMPORTS_PER_SOL;
+  
+    
+    assert.equal(wallet.publicKey.toString(), assetAccount.owner.toString())
+
+
+
+  });
+
+  it("Withdraw Funds", async()=>{
+    const {
+      asset,
+      listingPda,
+      userPda,
+      vaultPda
+    } = await prepareNFT(null, 1)
+
+    const VaultBalanceBefore = await provider.connection.getBalance(vaultPda);
+    const balanceInSolBefore = VaultBalanceBefore / anchor.web3.LAMPORTS_PER_SOL;
+
+    const sellerBalanceBefore = await provider.connection.getBalance(sellet.publicKey);
+    const balanceInSolSellerBefore = sellerBalanceBefore / anchor.web3.LAMPORTS_PER_SOL;
+
+    await program.methods.withdrawFunds()
+    .accountsPartial({
+      seller: sellet.publicKey,
+      userPda,
+      vaultPda,
+    }).signers([sellet])
+    .rpc()
+
+
+    const VaultBalanceAfter = await provider.connection.getBalance(vaultPda);
+    const balanceInSolAfter = VaultBalanceAfter / anchor.web3.LAMPORTS_PER_SOL;
+
+    const sellerBalanceAfter = await provider.connection.getBalance(sellet.publicKey);
+    const balanceInSolSellerAfter = sellerBalanceAfter / anchor.web3.LAMPORTS_PER_SOL;
+
+    const vaultRent = await provider.connection.getMinimumBalanceForRentExemption(0) / anchor.web3.LAMPORTS_PER_SOL
+
+    const finalSellerBalance = balanceInSolSellerBefore + balanceInSolBefore - vaultRent;
+    
+    assert.equal(balanceInSolSellerAfter, finalSellerBalance)
+    assert.equal(balanceInSolAfter, vaultRent)
+
+
+
+  });
+
+  it("Cancel Listing", async () => {
+    // Add your test here.
+  
+    const nftSigner = await mintNftLocal(umi, selletKeypair)
+    // const asseta = await fetchAsset(umi, nftSigner.publicKey);
+    const  asset =  new anchor.web3.PublicKey(nftSigner.publicKey)
+    const {
+      _,
+      listingPda,
+      userPda,
+      vaultPda
+    } = await prepareNFT(asset, 2)
+
+    const price = new anchor.BN(1*anchor.web3.LAMPORTS_PER_SOL);
+    // const assetAccounta = await fetchAsset(umi, publicKey(asset.toString()));
+    // console.log("Asset owner:", assetAccounta.owner.toString());
+ 
+    const txn = await program.methods.initializeListing(price).accountsPartial({
+      seller: sellet.publicKey,
+      asset: asset,
+      listingPda,
+      userPda,
+      vaultPda,
+      mplCoreProgram: MPL_CORE_PROGRAM_ID
+    })
+    .signers([sellet])
+    .rpc()
+
+  const assetAccountBefore = await fetchAsset(umi, publicKey(nftSigner.publicKey.toString()));
+
+
+  assert.equal(listingPda.toString(), assetAccountBefore.owner.toString())
+
+
+
+  await program.methods.cancelListing()
+  .accountsPartial({
+    seller: sellet.publicKey,
+    asset,
+    listingPda,
+    mplCoreProgram: MPL_CORE_PROGRAM_ID
+  })
+  .signers([sellet])
+  .rpc();
+
+  const assetAccountAfter = await fetchAsset(umi, publicKey(nftSigner.publicKey.toString()));
+
+
+  assert.equal(sellet.publicKey.toString(), assetAccountAfter.owner.toString())
     
   });
 });
