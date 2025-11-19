@@ -1,5 +1,5 @@
 use anchor_lang::{prelude::*, system_program};
-use mpl_core::{instructions::{TransferV1Cpi, TransferV1CpiAccounts, TransferV1CpiBuilder, TransferV1InstructionArgs}, types::CompressionProof};
+use mpl_core::{instructions::{TransferV1Cpi, TransferV1CpiAccounts, TransferV1CpiBuilder, TransferV1InstructionArgs}, types::{CompressionProof, UpdateAuthority}};
 
 use crate::{Listing, User};
 
@@ -61,6 +61,7 @@ impl<'info> InitalizeListing<'info> {
         user.user = self.seller.key();
         user.vault_bump = vault_bump;
 
+        
         // CPI to mpl core to transfer the asset to listing pda
         TransferV1CpiBuilder::new(&self.mpl_core_program.to_account_info())
             .asset(&self.asset.to_account_info())
@@ -72,8 +73,8 @@ impl<'info> InitalizeListing<'info> {
             .system_program(Some(&self.system_program.to_account_info()))
             .invoke()?;
 
-//         let sys_ai = self.system_program.to_account_info();
-//         let seller_ai = self.seller.to_account_info();
+        // let sys_ai = self.system_program.to_account_info();
+        // let seller_ai = self.seller.to_account_info();
 //         let accounts = TransferV1CpiAccounts {
 //             asset:        &self.asset.to_account_info(),
 //             collection:   None,
@@ -89,6 +90,22 @@ impl<'info> InitalizeListing<'info> {
 // };
 //         TransferV1Cpi::new(&self.mpl_core_program.to_account_info(), accounts, proof)
 //         .invoke()?;
+
+
+        // mpl_core::instructions::TransferV1Cpi {
+        //     asset: &self.asset.to_account_info(),
+        //     collection: None,
+        //     payer:&self.seller.to_account_info(),
+        //     authority: Some(&seller_ai),
+        //     new_owner: &self.listing_pda.to_account_info(),
+        //     system_program: Some(&sys_ai),
+        //     log_wrapper: None,
+        //     __program: &self.mpl_core_program.to_account_info(),
+        //     __args: mpl_core::instructions::TransferV1InstructionArgs {
+        //         compression_proof: None,
+        //     },
+        // }
+        // .invoke()?;
 
         Ok(())
     }

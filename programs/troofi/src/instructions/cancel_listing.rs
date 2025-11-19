@@ -26,13 +26,28 @@ pub struct CancelListing<'info> {
 
 impl<'info> CancelListing<'info> {
     pub fn cancel(&self) -> Result<()> {
+        let seller_key = self.listing_pda.seller.key();
+        let asset_key = self.listing_pda.asset.key();
+
+        let seeds = &[
+            b"listing",
+            seller_key.as_ref(),
+            asset_key.as_ref(),
+            &[self.listing_pda.bump],
+        ];
+        let signer_seeds = &[&seeds[..]];
         // CPI to mpl core to transfer the asset to listing pda
         TransferV1CpiBuilder::new(&self.mpl_core_program.to_account_info())
             .asset(&self.asset.to_account_info())
+            .collection(None)
             .authority(Some(&self.listing_pda.to_account_info()))
+            .payer(&self.seller.to_account_info())
             .new_owner(&self.seller.to_account_info())
             .system_program(Some(&self.system_program.to_account_info()))
-            .invoke()?;
+            .log_wrapper(None)
+            .invoke_signed(signer_seeds)?;
+
+        self.listing_pda.close(self.seller.to_account_info())?;
 
         Ok(())
     }

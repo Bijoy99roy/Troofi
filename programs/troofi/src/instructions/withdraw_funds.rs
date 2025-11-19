@@ -1,6 +1,6 @@
 use anchor_lang::{prelude::*, system_program::{self, Transfer}};
 
-use crate::{ User};
+use crate::{ TroofiErrors, User};
 
 #[derive(Accounts)]
 pub struct WithdrawFunds<'info> {
@@ -28,7 +28,9 @@ pub struct WithdrawFunds<'info> {
 
 impl<'info> WithdrawFunds<'info> {
     pub fn withdraw(&self) -> Result<()> {
-        
+        let rent = Rent::get()?;
+        let lamports = rent.minimum_balance(0);
+        require!(self.vault_pda.to_account_info().lamports() > lamports, TroofiErrors::InsufficientFunds);
 
         let seller_account_info = self.seller.to_account_info();
 
@@ -40,12 +42,14 @@ impl<'info> WithdrawFunds<'info> {
         to: seller_account_info,
     };
 
+        
+
         let seeds = [b"vault", sellet_key.as_ref(), &[self.user_pda.vault_bump]];
         let signer_seed = &[&seeds[..]];
 
         let cpi_context = CpiContext::new_with_signer(self.system_program.to_account_info(), ix, signer_seed);
 
-        system_program::transfer(cpi_context, self.vault_pda.to_account_info().lamports())?;
+        system_program::transfer(cpi_context, self.vault_pda.to_account_info().lamports() - lamports)?;
 
         Ok(())
     }

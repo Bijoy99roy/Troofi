@@ -9,6 +9,7 @@ pub struct BuyListing<'info> {
     pub buyer: Signer<'info>,
 
     /// CHECK: The core asset account
+    #[account(mut)]
     pub asset: AccountInfo<'info>,
 
     #[account(
@@ -62,13 +63,31 @@ impl<'info> BuyListing<'info> {
 
         system_program::transfer(cpi_context, self.listing_pda.price)?;
 
+
+        let seller_key = self.listing_pda.seller.key();
+        let asset_key = self.asset.key();
+
+        
+        let seeds = &[
+            b"listing", 
+            seller_key.as_ref(), 
+            asset_key.as_ref(), 
+            &[self.listing_pda.bump] 
+        ];
+        let signer_seeds = &[&seeds[..]];
+
         // CPI to mpl core to transfer the asset to buyer
         TransferV1CpiBuilder::new(&self.mpl_core_program.to_account_info())
             .asset(&self.asset.to_account_info())
+            .collection(None)
             .authority(Some(&self.listing_pda.to_account_info()))
             .new_owner(&self.buyer.to_account_info())
+            .payer(&self.buyer.to_account_info())
             .system_program(Some(&self.system_program.to_account_info()))
-            .invoke()?;
+            .log_wrapper(None)
+            .invoke_signed(signer_seeds)?;
+
+        self.listing_pda.close(self.vault_pda.to_account_info())?;
         
         Ok(())
     }
