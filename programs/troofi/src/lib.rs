@@ -30,4 +30,9 @@ pub mod troofi {
         ctx.accounts.cancel()?;
         Ok(())
     }
+
+    pub fn withdraw_funds(ctx: Context<WithdrawFunds>) -> Result<()> {
+        ctx.accounts.withdraw()?;
+        Ok(())
+    }
 }
