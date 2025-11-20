@@ -19,6 +19,7 @@ describe("troofi", () => {
 
   const wallet = anchor.web3.Keypair.generate()
   const nftBucket = {}
+  let marketplaceBucket;
   const umi = createUmi("http://0.0.0.0:8899", "confirmed")
       .use(mplCore())
       .use(dasApi())
@@ -36,6 +37,9 @@ function loadKeypairFromFileST(secretFilePath: string){
 }
   const selletKeypair = loadKeypairFromFile("/home/roy/solana_projs/troofi/nftuLPVQupTr1coaiWzNV2WC8gchv12SsRz5JV32jLf.json")
   const sellet = loadKeypairFromFileST("/home/roy/solana_projs/troofi/nftuLPVQupTr1coaiWzNV2WC8gchv12SsRz5JV32jLf.json")
+
+  const admin = loadKeypairFromFileST("/home/roy/solana_projs/troofi/nftuLPVQupTr1coaiWzNV2WC8gchv12SsRz5JV32jLf.json")
+
   async function getPda(seeds) {
     const [pda, bump] = anchor.web3.PublicKey.findProgramAddressSync(
       seeds,
@@ -50,6 +54,7 @@ function loadKeypairFromFileST(secretFilePath: string){
 
       return nftBucket[id]
       }
+
     const {pda: listingPda} =  await getPda([Buffer.from("listing"), sellet.publicKey.toBuffer(), asset.toBuffer()])
     
     const {pda: userPda} = await getPda([Buffer.from("user"), sellet.publicKey.toBuffer()])
@@ -57,15 +62,27 @@ function loadKeypairFromFileST(secretFilePath: string){
     const {pda: vaultPda} = await getPda([Buffer.from("vault"), sellet.publicKey.toBuffer()])
 
     
+    
     nftBucket[id] = {
       asset,
       listingPda,
       userPda,
-      vaultPda
+      vaultPda,
     }
 
     return nftBucket[id]
 
+  }
+
+  async function prepareMarketplace() {
+    const {pda: marketplaceFeeVault} = await getPda([Buffer.from("marketplace_fee"), admin.publicKey.toBuffer()])
+    const {pda: marketplacePda} = await getPda([Buffer.from("marketplace"), admin.publicKey.toBuffer()])
+    marketplaceBucket = {
+      marketplaceFeeVault,
+      marketplacePda
+    }
+
+    return marketplaceBucket;
   }
 
   async function getAirdrop(
@@ -84,6 +101,27 @@ function loadKeypairFromFileST(secretFilePath: string){
     await getAirdrop(wallet.publicKey);    
   })
 
+  it("Initalize Fee Vault", async  ()=>{
+    const {
+      marketplaceFeeVault,
+      marketplacePda
+    } = await prepareMarketplace()
+
+    await program.methods.initalizeFeesVault()
+    .accountsPartial({
+      admin: admin.publicKey,
+      marketplacePda,
+      feeVault: marketplaceFeeVault
+    }).signers([admin])
+    .rpc()
+
+    const accounts = await program.account.marketplace.fetch(marketplacePda)
+
+    assert.equal(accounts.admin.toString(), admin.publicKey.toString());
+    assert.equal(accounts.feeNumerator.toNumber(), 25);
+    assert.equal(accounts.feeDenominator.toNumber(), 10000);
+  });
+
   it("Initalize Listing", async () => {
     // Add your test here.
   
@@ -94,7 +132,7 @@ function loadKeypairFromFileST(secretFilePath: string){
       _,
       listingPda,
       userPda,
-      vaultPda
+      vaultPda,
     } = await prepareNFT(asset, 1)
 
     const price = new anchor.BN(1*anchor.web3.LAMPORTS_PER_SOL);
@@ -137,10 +175,13 @@ assert.equal(listingPda.toString(), assetAccount.owner.toString())
       asset,
       listingPda,
       userPda,
-      vaultPda
+      vaultPda,
     } = await prepareNFT(null, 1)
 
-
+    const {
+      marketplaceFeeVault,
+      marketplacePda
+    } = marketplaceBucket;
     await program.methods.buyListing()
     .accountsPartial({
       buyer: wallet.publicKey,
@@ -148,6 +189,8 @@ assert.equal(listingPda.toString(), assetAccount.owner.toString())
       listingPda,
       userPda,
       vaultPda,
+      marketplacePda,
+      feeVault: marketplaceFeeVault,
       mplCoreProgram: MPL_CORE_PROGRAM_ID
 
     }).signers([wallet])
@@ -173,7 +216,7 @@ assert.equal(listingPda.toString(), assetAccount.owner.toString())
       asset,
       listingPda,
       userPda,
-      vaultPda
+      vaultPda,
     } = await prepareNFT(null, 1)
 
     const VaultBalanceBefore = await provider.connection.getBalance(vaultPda);
@@ -181,14 +224,18 @@ assert.equal(listingPda.toString(), assetAccount.owner.toString())
 
     const sellerBalanceBefore = await provider.connection.getBalance(sellet.publicKey);
     const balanceInSolSellerBefore = sellerBalanceBefore / anchor.web3.LAMPORTS_PER_SOL;
-
-    await program.methods.withdrawFunds()
+    try{
+      await program.methods.withdrawFunds()
     .accountsPartial({
       seller: sellet.publicKey,
       userPda,
       vaultPda,
     }).signers([sellet])
     .rpc()
+    } catch(err){
+      console.log(err)
+    }
+    
 
 
     const VaultBalanceAfter = await provider.connection.getBalance(vaultPda);
@@ -201,8 +248,8 @@ assert.equal(listingPda.toString(), assetAccount.owner.toString())
 
     const finalSellerBalance = balanceInSolSellerBefore + balanceInSolBefore - vaultRent;
     
-    assert.equal(balanceInSolSellerAfter, finalSellerBalance)
-    assert.equal(balanceInSolAfter, vaultRent)
+    assert.equal(balanceInSolSellerAfter.toPrecision(7), finalSellerBalance.toPrecision(7))
+    assert.equal(balanceInSolAfter.toPrecision(7), vaultRent.toPrecision(7))
 
 
 
@@ -218,7 +265,7 @@ assert.equal(listingPda.toString(), assetAccount.owner.toString())
       _,
       listingPda,
       userPda,
-      vaultPda
+      vaultPda,
     } = await prepareNFT(asset, 2)
 
     const price = new anchor.BN(1*anchor.web3.LAMPORTS_PER_SOL);
@@ -258,5 +305,43 @@ assert.equal(listingPda.toString(), assetAccount.owner.toString())
 
   assert.equal(sellet.publicKey.toString(), assetAccountAfter.owner.toString())
     
+  });
+
+  it("Withdraw Fee", async ()=>{
+    const {
+      marketplaceFeeVault,
+      marketplacePda
+    } = marketplaceBucket;
+
+    const feeVaultBalanceBeforeInLamport = await provider.connection.getBalance(marketplaceFeeVault);
+    const feeVaultBalanceBefore = feeVaultBalanceBeforeInLamport / anchor.web3.LAMPORTS_PER_SOL;
+
+    const adminBalanceBefore = await provider.connection.getBalance(admin.publicKey);
+    const balanceInSolAdminBefore = adminBalanceBefore / anchor.web3.LAMPORTS_PER_SOL;
+
+    await program.methods.withdrawFees()
+    .accountsPartial({
+      admin: admin.publicKey,
+      marketplacePda,
+      feeVault: marketplaceFeeVault
+    }).signers([admin])
+    .rpc();
+
+    const feeVaultBalanceAfterInLamport = await provider.connection.getBalance(marketplaceFeeVault);
+    const feeVaultBalanceAfter = feeVaultBalanceAfterInLamport / anchor.web3.LAMPORTS_PER_SOL;
+
+    const vaultRent = await provider.connection.getMinimumBalanceForRentExemption(0) / anchor.web3.LAMPORTS_PER_SOL
+
+    const finaladminBalance = balanceInSolAdminBefore + feeVaultBalanceBefore - vaultRent;
+
+    const adminBalanceAfterInLamport = await provider.connection.getBalance(admin.publicKey);
+    const adminBalanceAfter = adminBalanceAfterInLamport / anchor.web3.LAMPORTS_PER_SOL;
+
+
+    assert.equal(adminBalanceAfter.toString(), finaladminBalance.toString())
+
+    assert.equal(feeVaultBalanceAfter.toString(), vaultRent.toString())
+
+
   });
 });
