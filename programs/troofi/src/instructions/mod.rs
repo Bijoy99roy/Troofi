@@ -1,8 +1,12 @@
 pub mod buy_listing;
 pub mod cancel_listing;
 pub mod initalize_listing;
+pub mod initialize_feesvault;
+pub mod withdraw_fee;
 pub mod withdraw_funds;
 pub use buy_listing::*;
 pub use cancel_listing::*;
 pub use initalize_listing::*;
+pub use initialize_feesvault::*;
+pub use withdraw_fee::*;
 pub use withdraw_funds::*;

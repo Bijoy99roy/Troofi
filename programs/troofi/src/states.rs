@@ -16,3 +16,13 @@ pub struct User {
     pub bump: u8,
     pub vault_bump: u8,
 }
+
+#[account]
+#[derive(InitSpace)]
+pub struct Marketplace {
+    pub admin: Pubkey,
+    pub fee_numerator: u64,
+    pub fee_denominator: u64,
+    pub bump: u8,
+    pub fee_vault_bump: u8,
+}

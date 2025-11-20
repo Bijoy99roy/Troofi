@@ -1,7 +1,7 @@
 use anchor_lang::{prelude::*, system_program::{self, Transfer}};
 use mpl_core::instructions::TransferV1CpiBuilder;
 
-use crate::{Listing, TroofiErrors, User};
+use crate::{Listing, Marketplace, TroofiErrors, User};
 
 #[derive(Accounts)]
 pub struct BuyListing<'info> {
@@ -35,6 +35,22 @@ pub struct BuyListing<'info> {
     )]
     pub vault_pda: AccountInfo<'info>,
 
+    /// CHECK: This PDA is derived inside the program and does not need additional checks
+    #[account(
+        mut,
+        owner = system_program::ID,                   
+        seeds = [b"marketplace_fee", marketplace_pda.admin.key().as_ref()],
+        bump=marketplace_pda.fee_vault_bump,
+    )]
+    pub fee_vault: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"marketplace", marketplace_pda.admin.key().as_ref()],
+        bump=marketplace_pda.bump
+    )]
+    pub marketplace_pda: Account<'info, Marketplace>,
+
     /// CHECK: mpl-core program
     pub mpl_core_program: AccountInfo<'info>,
 
@@ -54,6 +70,19 @@ impl<'info> BuyListing<'info> {
             TroofiErrors::InsufficientFunds
         );
 
+        let fee_amount = self.listing_pda.price * self.marketplace_pda.fee_numerator / self.marketplace_pda.fee_denominator;
+        let seller_amount = self.listing_pda.price - fee_amount;
+
+
+        // Transfer marketplace fees fund to marketplace fee vault 
+        let ix: Transfer<'_> = system_program::Transfer {
+        from: self.buyer.to_account_info(),
+        to: self.fee_vault.to_account_info(),
+    };
+        let cpi_context = CpiContext::new(self.system_program.to_account_info(), ix);
+
+        system_program::transfer(cpi_context, fee_amount)?;
+
         // Transfer buyer fund to marketplace vault of seller
         let ix: Transfer<'_> = system_program::Transfer {
         from: self.buyer.to_account_info(),
@@ -61,7 +90,7 @@ impl<'info> BuyListing<'info> {
     };
         let cpi_context = CpiContext::new(self.system_program.to_account_info(), ix);
 
-        system_program::transfer(cpi_context, self.listing_pda.price)?;
+        system_program::transfer(cpi_context, seller_amount)?;
 
 
         let seller_key = self.listing_pda.seller.key();

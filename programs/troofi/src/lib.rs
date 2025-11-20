@@ -11,6 +11,12 @@ pub mod troofi {
 
     use super::*;
 
+    pub fn initalize_fees_vault(ctx: Context<InitializeFeeVault>) -> Result<()> {
+        ctx.accounts
+            .initialize(ctx.bumps.marketplace_pda, ctx.bumps.fee_vault)?;
+        Ok(())
+    }
+
     pub fn initialize_listing(ctx: Context<InitalizeListing>, price: u64) -> Result<()> {
         ctx.accounts.initialize(
             price,
@@ -32,6 +38,11 @@ pub mod troofi {
     }
 
     pub fn withdraw_funds(ctx: Context<WithdrawFunds>) -> Result<()> {
+        ctx.accounts.withdraw()?;
+        Ok(())
+    }
+
+    pub fn withdraw_fees(ctx: Context<WithdrawFees>) -> Result<()> {
         ctx.accounts.withdraw()?;
         Ok(())
     }
